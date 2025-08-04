@@ -1,0 +1,425 @@
+---
+title: "Mediation_Analysis"
+author: "Evelina Bao"
+date: "2025-07-01"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(lavaan)
+library(lavaanPlot)
+```
+
+```{r}
+data <- read.csv("Final_Data_Cleaned.csv", sep = ",", header = TRUE, stringsAsFactors = FALSE)
+
+data$Condition <- as.factor(data$Condition)
+```
+
+```{r}
+# install packages
+pkgs <- c("tidyverse", 
+          "dplyr", 
+          "haven", 
+          "foreign", 
+          "lme4", 
+          "nlme", 
+          "lsr", 
+          "emmeans", 
+          "afex", 
+          "knitr", 
+          "kableExtra", 
+          "car",
+          "mediation",
+          "rockchalk",
+          "multilevel",
+          "bda",
+          "gvlma",
+          "stargazer",
+          "QuantPsyc",
+          "pequod",
+          "MASS",
+          "texreg",
+          "pwr",
+          "effectsize",
+          "semPlot",
+          "lmtest",
+          "semptools",
+          "conflicted",
+          "nnet",
+          "ordinal",
+          "DescTools")
+
+
+packages <- rownames(installed.packages())
+p_to_install <- pkgs[!(pkgs %in% packages)]
+
+if(length(p_to_install) > 0){
+  install.packages(p_to_install)
+}
+
+lapply(pkgs, library, character.only = TRUE)
+
+devtools::install_github("cardiomoon/semMediation")
+library(semMediation)
+
+# tell R which package to use for functions that are in multiple packages
+these_functions <- c("mutate", "select", "summarize", "filter")
+lapply(these_functions, conflict_prefer, "dplyr")
+
+conflict_prefer("mutate", "dplyr")
+conflict_prefer("select", "dplyr")
+conflict_prefer("summarize", "dplyr")
+```
+
+
+```{r}
+# dummy code condition
+library(fastDummies)
+data <- dummy_cols(data, 
+                   select_columns = "Condition")
+```
+
+```{r}
+# Mediation: Condition -> Fear -> Belief (significant)
+model_Fear_Belief <-"
+# Direct Effects on Belief
+PostBelief ~ a1*Condition_1 + a2*Condition_2 + a3*Condition_3 + b*Fear
+
+# Effect of condition on discomfort
+Fear ~ c1*Condition_1 + c2*Condition_2 + c3*Condition_3
+
+# Indirect effects 
+ind1:=b*c1
+ind2:=b*c2
+ind3:=b*c3
+
+# Total effects
+total1 := a1 + (b*c1)
+total2 := a2 + (b*c2)
+total3 := a3 + (b*c3)
+"
+
+med_Fear_Belief<-sem(model = model_Fear_Belief, data = data, meanstructure = TRUE, se = "boot", bootstrap = 5000)
+
+summary(med_Fear_Belief,standardized=T,ci = T, fit.measures=T,rsquare=T)
+```
+
+```{r}
+# Mediation: Condition -> Hope -> support
+model_hope_support <-"
+# Direct Effects on Support
+Support ~ a1*Condition_1 + a2*Condition_2 + a3*Condition_3 + b*Hope
+
+# Effect of condition on hope
+Hope ~ c1*Condition_1 + c2*Condition_2 + c3*Condition_3
+
+# Indirect effects (now must include dummy paths for only two levels)
+ind1:=b*c1
+ind2:=b*c2
+ind3:=b*c3
+
+# Total effects
+total1 := a1 + (b*c1)
+total2 := a2 + (b*c2)
+total3 := a3 + (b*c3)
+"
+
+model_hope_support<-sem(model = model_hope_support, data = data, meanstructure = TRUE, se = "boot", bootstrap = 5000)
+
+summary(model_hope_support,standardized=T,ci = T,fit.measures=T,rsquare=T)
+```
+
+```{r}
+# Mediation: Condition -> Personal efficacy -> support
+model_Efficacy_Support <-"
+# Direct Effects on Belief
+Support ~ a1*Condition_1 + a2*Condition_2 + a3*Condition_3 + b*PEfficacy
+
+# Effect of condition on discomfort (note: now we use only two dummies, assuming one as reference)
+PEfficacy ~ c1*Condition_1 + c2*Condition_2 + c3*Condition_3
+
+# Indirect effects (now must include dummy paths for only two levels)
+ind1:=b*c1
+ind2:=b*c2
+ind3:=b*c3
+
+# Total effects
+total1 := a1 + (b*c1)
+total2 := a2 + (b*c2)
+total3 := a3 + (b*c3)
+"
+
+med_Efficacy_Support<-sem(model = model_Efficacy_Support, data = data, meanstructure = TRUE, se = "boot", bootstrap = 5000)
+
+summary(med_Efficacy_Support,standardized=T,ci = T,fit.measures=T,rsquare=T)
+```
+
+
+
+```{r}
+#Parallel mediation: Condition -> fear/hope/PEfficacy -> support
+med_para_emo_eff_support <-"
+# Direct Effects on Belief
+Support ~ c1*Condition_1 + c2*Condition_2 + c3*Condition_3 + b1*Fear + b2*Hope + b3*PEfficacy
+
+# Effect of condition on discomfort
+Fear ~ a1*Condition_1 + a2*Condition_2 + a3*Condition_3
+Hope ~ a4*Condition_1 + a5*Condition_2 + a6*Condition_3
+PEfficacy ~ a7*Condition_1 + a8*Condition_2 + a9*Condition_3
+
+# Indirect effects
+a1b1 := a1*b1
+a2b1 := a2*b1
+a3b1 := a3*b1
+a4b2 := a4*b2
+a5b2 := a5*b2
+a6b2 := a6*b2
+a7b3 := a7*b3
+a8b3 := a8*b3
+a9b3 := a9*b3
+
+# Total effects
+conseq := a1b1 + a4b2 + a7b3+ c1
+solu := a2b1 + a5b2 + a8b3 + c2
+comb := a3b1 + a6b2 + a9b3 + c3
+total := c1 + c2 + c3 + a1b1 + a4b2 + a7b3 + a2b1 + a5b2 + a8b3 + a3b1 + a6b2 + a9b3
+"
+
+model_para_emo_eff_support<-sem(model = med_para_emo_eff_support, data = data, meanstructure = TRUE, se = "boot", bootstrap = 5000)
+
+summary(model_para_emo_eff_support,standardized=T,ci = T,fit.measures=T,rsquare=T)
+```
+
+
+```{r}
+#Parallel mediation: Condition -> fear/hope/PEfficacy/belief -> support
+med_para_emo_eff_belief_support <-"
+# Direct Effects on Belief
+Support ~ c1*Condition_1 + c2*Condition_2 + c3*Condition_3 + b1*Fear + b2*Hope + b3*PEfficacy + b4*PostBelief
+
+# Effect of condition on discomfort
+Fear ~ a1*Condition_1 + a2*Condition_2 + a3*Condition_3
+Hope ~ a4*Condition_1 + a5*Condition_2 + a6*Condition_3
+PEfficacy ~ a7*Condition_1 + a8*Condition_2 + a9*Condition_3
+PostBelief ~ a10*Condition_1 + a11*Condition_2 + a12*Condition_3
+
+# Indirect effects
+a1b1 := a1*b1
+a2b1 := a2*b1
+a3b1 := a3*b1
+a4b2 := a4*b2
+a5b2 := a5*b2
+a6b2 := a6*b2
+a7b3 := a7*b3
+a8b3 := a8*b3
+a9b3 := a9*b3
+a10b4 := a10*b4
+a11b4 := a11*b4
+a12b4 := a12*b4
+
+# Total effects
+conseq := a1b1 + a4b2 + a7b3+ a10b4 + c1
+solu := a2b1 + a5b2 + a8b3 + a11b4 + c2
+comb := a3b1 + a6b2 + a9b3 + a12b4 + c3
+total := c1 + c2 + c3 + a1b1 + a4b2 + a7b3 + a2b1 + a5b2 + a8b3 + a3b1 + a6b2 + a9b3 + a10b4 + a11b4 + a12b4
+"
+
+model_para_emo_eff_belief_support<-sem(model = med_para_emo_eff_belief_support, data = data, meanstructure = TRUE, se = "boot", bootstrap = 5000)
+
+summary(model_para_emo_eff_belief_support,standardized=T,ci = T,fit.measures=T,rsquare=T)
+```
+
+
+### Mediation for Policy Choice
+
+```{r}
+# List of Policy_choice variables
+policy_vars <- paste0("Policy_choice_", 1:5)
+```
+
+
+```{r}
+# Mediation: Condition -> Hope -> choice
+model_hope_choice <-"
+# Measurement model for Policy_choice
+  Policy_choice =~ Policy_choice_1 + Policy_choice_2 + Policy_choice_3 + Policy_choice_4 + Policy_choice_5
+
+# Direct Effects on Support
+Policy_choice ~ a1*Condition_1 + a2*Condition_2 + a3*Condition_3 + b*Hope
+
+# Effect of condition on hope
+Hope ~ c1*Condition_1 + c2*Condition_2 + c3*Condition_3
+
+# Indirect effects (now must include dummy paths for only two levels)
+ind1:=b*c1
+ind2:=b*c2
+ind3:=b*c3
+
+# Total effects
+total1 := a1 + (b*c1)
+total2 := a2 + (b*c2)
+total3 := a3 + (b*c3)
+"
+
+med_hope_choice <- sem(
+  model = model_hope_choice,
+  data = data,
+  meanstructure = TRUE,
+  estimator = "DWLS",
+  ordered = policy_vars,
+  se = "boot",
+  bootstrap = 5000
+)
+
+summary(med_hope_choice,standardized=T,ci = T,fit.measures=T,rsquare=T)
+```
+
+
+```{r}
+# Mediation: Condition -> PEfficacy -> choice
+model_eff_choice <-"
+# Measurement model for Policy_choice
+  Policy_choice =~ Policy_choice_1 + Policy_choice_2 + Policy_choice_3 + Policy_choice_4 + Policy_choice_5
+
+# Direct Effects on Support
+Policy_choice ~ a1*Condition_1 + a2*Condition_2 + a3*Condition_3 + b*PEfficacy
+
+# Effect of condition on hope
+PEfficacy ~ c1*Condition_1 + c2*Condition_2 + c3*Condition_3
+
+# Indirect effects (now must include dummy paths for only two levels)
+ind1:=b*c1
+ind2:=b*c2
+ind3:=b*c3
+
+# Total effects
+total1 := a1 + (b*c1)
+total2 := a2 + (b*c2)
+total3 := a3 + (b*c3)
+"
+
+med_eff_choice <- sem(
+  model = model_eff_choice,
+  data = data,
+  meanstructure = TRUE,
+  estimator = "DWLS",
+  ordered = policy_vars,
+  se = "boot",
+  bootstrap = 5000
+)
+
+med_eff_choice<-sem(model = model_eff_choice, data = data, meanstructure = TRUE, se = "boot", bootstrap = 5000)
+
+summary(med_eff_choice,standardized=T,ci = T,fit.measures=T,rsquare=T)
+```
+
+
+
+```{r}
+#Parallel mediation: Condition -> fear/hope/PEfficacy -> choice
+model_para_emo_eff_choice <-"
+# Measurement model for Policy_choice
+  Policy_choice =~ Policy_choice_1 + Policy_choice_2 + Policy_choice_3 + Policy_choice_4 + Policy_choice_5
+
+# Direct Effects on Belief
+Policy_choice ~ c1*Condition_1 + c2*Condition_2 + c3*Condition_3 + b1*Fear + b2*Hope + b3*PEfficacy
+
+# Effect of condition on discomfort
+Fear ~ a1*Condition_1 + a2*Condition_2 + a3*Condition_3
+Hope ~ a4*Condition_1 + a5*Condition_2 + a6*Condition_3
+PEfficacy ~ a7*Condition_1 + a8*Condition_2 + a9*Condition_3
+
+# Indirect effects
+a1b1 := a1*b1
+a2b1 := a2*b1
+a3b1 := a3*b1
+a4b2 := a4*b2
+a5b2 := a5*b2
+a6b2 := a6*b2
+a7b3 := a7*b3
+a8b3 := a8*b3
+a9b3 := a9*b3
+
+# Total effects
+conseq := a1b1 + a4b2 + a7b3+ c1
+solu := a2b1 + a5b2 + a8b3 + c2
+comb := a3b1 + a6b2 + a9b3 + c3
+total := c1 + c2 + c3 + a1b1 + a4b2 + a7b3 + a2b1 + a5b2 + a8b3 + a3b1 + a6b2 + a9b3
+"
+
+
+med_para_emo_eff_choice <- sem(
+  model = model_para_emo_eff_choice,
+  data = data,
+  meanstructure = TRUE,
+  estimator = "DWLS",
+  ordered = policy_vars,
+  se = "boot",
+  bootstrap = 5000
+)
+
+# Display the summary
+summary(med_para_emo_eff_choice, standardized = TRUE,ci = T,fit.measures = TRUE, rsquare = TRUE)
+```
+
+
+```{r}
+#Parallel mediation: Condition -> fear/hope/PEfficacy/belief -> choice
+model_para_emo_eff_belief_choice <-"
+# Measurement model for Policy_choice
+  Policy_choice =~ Policy_choice_1 + Policy_choice_2 + Policy_choice_3 + Policy_choice_4 + Policy_choice_5
+
+# Direct Effects on Belief
+Policy_choice ~ c1*Condition_1 + c2*Condition_2 + c3*Condition_3 + b1*Fear + b2*Hope + b3*PEfficacy + b4*PostBelief
+
+# Effect of condition on discomfort
+Fear ~ a1*Condition_1 + a2*Condition_2 + a3*Condition_3
+Hope ~ a4*Condition_1 + a5*Condition_2 + a6*Condition_3
+PEfficacy ~ a7*Condition_1 + a8*Condition_2 + a9*Condition_3
+PostBelief ~ a10*Condition_1 + a11*Condition_2 + a12*Condition_3
+
+
+# Indirect effects
+a1b1 := a1*b1
+a2b1 := a2*b1
+a3b1 := a3*b1
+a4b2 := a4*b2
+a5b2 := a5*b2
+a6b2 := a6*b2
+a7b3 := a7*b3
+a8b3 := a8*b3
+a9b3 := a9*b3
+a10b4 := a10*b4
+a11b4 := a11*b4
+a12b4 := a12*b4
+
+# Total effects
+conseq := a1b1 + a4b2 + a7b3+ a10b4 + c1
+solu := a2b1 + a5b2 + a8b3 + a11b4 + c2
+comb := a3b1 + a6b2 + a9b3 + a12b4 + c3
+total := c1 + c2 + c3 + a1b1 + a4b2 + a7b3 + a2b1 + a5b2 + a8b3 + a3b1 + a6b2 + a9b3 + a10b4 + a11b4 + a12b4
+"
+
+
+med_para_emo_eff_belief_choice <- sem(
+  model = model_para_emo_eff_belief_choice,
+  data = data,
+  meanstructure = TRUE,
+  estimator = "DWLS",
+  ordered = policy_vars,
+  se = "boot",
+  bootstrap = 5000
+)
+
+# Display the summary
+summary(med_para_emo_eff_belief_choice, standardized = TRUE,ci = T,fit.measures = TRUE, rsquare = TRUE)
+```
+
+
+
+
